@@ -1,0 +1,549 @@
+commit e6badd32f454e7c2e41477cf0ce56acbf6ccbf53
+Author: Saurabh Gaur <saurabhgaur@gmail.com>
+Date:   Sat Feb 20 23:49:50 2010 -0500
+
+    added static pages and application layout view
+
+diff --git a/.autotest b/.autotest
+new file mode 100644
+index 0000000..935793b
+--- /dev/null
++++ b/.autotest
+@@ -0,0 +1,7 @@
++require "autotest/growl"
++
++Autotest.add_hook :initialize do |autotest|
++  %w{.git .svn .hg .DS_Store ._* vendor tmp log doc}.each do |exception|
++    autotest.add_exception(exception)
++  end
++end
+diff --git a/app/controllers/pages_controller.rb b/app/controllers/pages_controller.rb
+index 5635120..18ea3c5 100644
+--- a/app/controllers/pages_controller.rb
++++ b/app/controllers/pages_controller.rb
+@@ -1,8 +1,14 @@
+ class PagesController < ApplicationController
+   def home
++    @title = "Home"
+   end
+ 
+   def contact
++    @title = "Contact"
++  end
++
++  def about
++    @title = "About"
+   end
+ 
+ end
+diff --git a/app/views/layouts/application.html.erb b/app/views/layouts/application.html.erb
+new file mode 100644
+index 0000000..9fe0294
+--- /dev/null
++++ b/app/views/layouts/application.html.erb
+@@ -0,0 +1,10 @@
++<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
++  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
++<html lang="en" xml:lang="en" xmlns="http://www.w3.org/1999/xhtml">
++  <head>
++    <title>GetAPostDoc | <%= @title %></title>
++  </head>
++  <body>
++    <%= yield %>
++  </body>
++</html>
+diff --git a/app/views/pages/about.html.erb b/app/views/pages/about.html.erb
+new file mode 100644
+index 0000000..c72fd5d
+--- /dev/null
++++ b/app/views/pages/about.html.erb
+@@ -0,0 +1,2 @@
++<h2>About GetAPostDoc</h2>
++<p>GetAPostDoc helps PhD students find great Post Doc oppurtunities, and helps Institutes find great Post Doc applicants </p>
+diff --git a/config/environments/test.rb b/config/environments/test.rb
+index d6f80a4..16775ff 100644
+--- a/config/environments/test.rb
++++ b/config/environments/test.rb
+@@ -25,4 +25,6 @@ config.action_mailer.delivery_method = :test
+ # Use SQL instead of Active Record's schema dumper when creating the test database.
+ # This is necessary if your schema can't be completely dumped by the schema dumper,
+ # like if you have constraints or database-specific column types
+-# config.active_record.schema_format = :sql
+\ No newline at end of file
++# config.active_record.schema_format = :sql
++
++  config.gem 'rspec-rails', :version => '>= 1.3.2', :lib => false unless File.directory?(File.join(Rails.root, 'vendor/plugins/rspec-rails'))
+diff --git a/lib/tasks/rspec.rake b/lib/tasks/rspec.rake
+new file mode 100644
+index 0000000..dba3ffc
+--- /dev/null
++++ b/lib/tasks/rspec.rake
+@@ -0,0 +1,144 @@
++gem 'test-unit', '1.2.3' if RUBY_VERSION.to_f >= 1.9
++rspec_gem_dir = nil
++Dir["#{RAILS_ROOT}/vendor/gems/*"].each do |subdir|
++  rspec_gem_dir = subdir if subdir.gsub("#{RAILS_ROOT}/vendor/gems/","") =~ /^(\w+-)?rspec-(\d+)/ && File.exist?("#{subdir}/lib/spec/rake/spectask.rb")
++end
++rspec_plugin_dir = File.expand_path(File.dirname(__FILE__) + '/../../vendor/plugins/rspec')
++
++if rspec_gem_dir && (test ?d, rspec_plugin_dir)
++  raise "\n#{'*'*50}\nYou have rspec installed in both vendor/gems and vendor/plugins\nPlease pick one and dispose of the other.\n#{'*'*50}\n\n"
++end
++
++if rspec_gem_dir
++  $LOAD_PATH.unshift("#{rspec_gem_dir}/lib")
++elsif File.exist?(rspec_plugin_dir)
++  $LOAD_PATH.unshift("#{rspec_plugin_dir}/lib")
++end
++
++# Don't load rspec if running "rake gems:*"
++unless ARGV.any? {|a| a =~ /^gems/}
++
++begin
++  require 'spec/rake/spectask'
++rescue MissingSourceFile
++  module Spec
++    module Rake
++      class SpecTask
++        def initialize(name)
++          task name do
++            # if rspec-rails is a configured gem, this will output helpful material and exit ...
++            require File.expand_path(File.join(File.dirname(__FILE__),"..","..","config","environment"))
++
++            # ... otherwise, do this:
++            raise <<-MSG
++
++#{"*" * 80}
++*  You are trying to run an rspec rake task defined in
++*  #{__FILE__},
++*  but rspec can not be found in vendor/gems, vendor/plugins or system gems.
++#{"*" * 80}
++MSG
++          end
++        end
++      end
++    end
++  end
++end
++
++Rake.application.instance_variable_get('@tasks').delete('default')
++
++spec_prereq = File.exist?(File.join(RAILS_ROOT, 'config', 'database.yml')) ? "db:test:prepare" : :noop
++task :noop do
++end
++
++task :default => :spec
++task :stats => "spec:statsetup"
++
++desc "Run all specs in spec directory (excluding plugin specs)"
++Spec::Rake::SpecTask.new(:spec => spec_prereq) do |t|
++  t.spec_opts = ['--options', "\"#{RAILS_ROOT}/spec/spec.opts\""]
++  t.spec_files = FileList['spec/**/*_spec.rb']
++end
++
++namespace :spec do
++  desc "Run all specs in spec directory with RCov (excluding plugin specs)"
++  Spec::Rake::SpecTask.new(:rcov) do |t|
++    t.spec_opts = ['--options', "\"#{RAILS_ROOT}/spec/spec.opts\""]
++    t.spec_files = FileList['spec/**/*_spec.rb']
++    t.rcov = true
++    t.rcov_opts = lambda do
++      IO.readlines("#{RAILS_ROOT}/spec/rcov.opts").map {|l| l.chomp.split " "}.flatten
++    end
++  end
++
++  desc "Print Specdoc for all specs (excluding plugin specs)"
++  Spec::Rake::SpecTask.new(:doc) do |t|
++    t.spec_opts = ["--format", "specdoc", "--dry-run"]
++    t.spec_files = FileList['spec/**/*_spec.rb']
++  end
++
++  desc "Print Specdoc for all plugin examples"
++  Spec::Rake::SpecTask.new(:plugin_doc) do |t|
++    t.spec_opts = ["--format", "specdoc", "--dry-run"]
++    t.spec_files = FileList['vendor/plugins/**/spec/**/*_spec.rb'].exclude('vendor/plugins/rspec/*')
++  end
++
++  [:models, :controllers, :views, :helpers, :lib, :integration].each do |sub|
++    desc "Run the code examples in spec/#{sub}"
++    Spec::Rake::SpecTask.new(sub => spec_prereq) do |t|
++      t.spec_opts = ['--options', "\"#{RAILS_ROOT}/spec/spec.opts\""]
++      t.spec_files = FileList["spec/#{sub}/**/*_spec.rb"]
++    end
++  end
++
++  desc "Run the code examples in vendor/plugins (except RSpec's own)"
++  Spec::Rake::SpecTask.new(:plugins => spec_prereq) do |t|
++    t.spec_opts = ['--options', "\"#{RAILS_ROOT}/spec/spec.opts\""]
++    t.spec_files = FileList['vendor/plugins/**/spec/**/*_spec.rb'].exclude('vendor/plugins/rspec/*').exclude("vendor/plugins/rspec-rails/*")
++  end
++
++  namespace :plugins do
++    desc "Runs the examples for rspec_on_rails"
++    Spec::Rake::SpecTask.new(:rspec_on_rails) do |t|
++      t.spec_opts = ['--options', "\"#{RAILS_ROOT}/spec/spec.opts\""]
++      t.spec_files = FileList['vendor/plugins/rspec-rails/spec/**/*_spec.rb']
++    end
++  end
++
++  # Setup specs for stats
++  task :statsetup do
++    require 'code_statistics'
++    ::STATS_DIRECTORIES << %w(Model\ specs spec/models) if File.exist?('spec/models')
++    ::STATS_DIRECTORIES << %w(View\ specs spec/views) if File.exist?('spec/views')
++    ::STATS_DIRECTORIES << %w(Controller\ specs spec/controllers) if File.exist?('spec/controllers')
++    ::STATS_DIRECTORIES << %w(Helper\ specs spec/helpers) if File.exist?('spec/helpers')
++    ::STATS_DIRECTORIES << %w(Library\ specs spec/lib) if File.exist?('spec/lib')
++    ::STATS_DIRECTORIES << %w(Routing\ specs spec/routing) if File.exist?('spec/routing')
++    ::STATS_DIRECTORIES << %w(Integration\ specs spec/integration) if File.exist?('spec/integration')
++    ::CodeStatistics::TEST_TYPES << "Model specs" if File.exist?('spec/models')
++    ::CodeStatistics::TEST_TYPES << "View specs" if File.exist?('spec/views')
++    ::CodeStatistics::TEST_TYPES << "Controller specs" if File.exist?('spec/controllers')
++    ::CodeStatistics::TEST_TYPES << "Helper specs" if File.exist?('spec/helpers')
++    ::CodeStatistics::TEST_TYPES << "Library specs" if File.exist?('spec/lib')
++    ::CodeStatistics::TEST_TYPES << "Routing specs" if File.exist?('spec/routing')
++    ::CodeStatistics::TEST_TYPES << "Integration specs" if File.exist?('spec/integration')
++  end
++
++  namespace :db do
++    namespace :fixtures do
++      desc "Load fixtures (from spec/fixtures) into the current environment's database.  Load specific fixtures using FIXTURES=x,y. Load from subdirectory in test/fixtures using FIXTURES_DIR=z."
++      task :load => :environment do
++        ActiveRecord::Base.establish_connection(Rails.env)
++        base_dir = File.join(Rails.root, 'spec', 'fixtures')
++        fixtures_dir = ENV['FIXTURES_DIR'] ? File.join(base_dir, ENV['FIXTURES_DIR']) : base_dir
++
++        require 'active_record/fixtures'
++        (ENV['FIXTURES'] ? ENV['FIXTURES'].split(/,/).map {|f| File.join(fixtures_dir, f) } : Dir.glob(File.join(fixtures_dir, '*.{yml,csv}'))).each do |fixture_file|
++          Fixtures.create_fixtures(File.dirname(fixture_file), File.basename(fixture_file, '.*'))
++        end
++      end
++    end
++  end
++end
++
++end
+diff --git a/script/autospec b/script/autospec
+new file mode 100755
+index 0000000..837bbd7
+--- /dev/null
++++ b/script/autospec
+@@ -0,0 +1,6 @@
++#!/usr/bin/env ruby
++gem 'test-unit', '1.2.3' if RUBY_VERSION.to_f >= 1.9
++ENV['RSPEC'] = 'true'     # allows autotest to discover rspec
++ENV['AUTOTEST'] = 'true'  # allows autotest to run w/ color on linux
++system((RUBY_PLATFORM =~ /mswin|mingw/ ? 'autotest.bat' : 'autotest'), *ARGV) ||
++  $stderr.puts("Unable to find autotest.  Please install ZenTest or fix your PATH")
+diff --git a/script/spec b/script/spec
+new file mode 100755
+index 0000000..46fdbe6
+--- /dev/null
++++ b/script/spec
+@@ -0,0 +1,10 @@
++#!/usr/bin/env ruby
++if ARGV.any? {|arg| %w[--drb -X --generate-options -G --help -h --version -v].include?(arg)}
++  require 'rubygems' unless ENV['NO_RUBYGEMS']
++else
++  gem 'test-unit', '1.2.3' if RUBY_VERSION.to_f >= 1.9
++  ENV["RAILS_ENV"] ||= 'test'
++  require File.expand_path(File.dirname(__FILE__) + "/../config/environment") unless defined?(RAILS_ROOT)
++end
++require 'spec/autorun'
++exit ::Spec::Runner::CommandLine.run
+diff --git a/spec/controllers/pages_controller_spec.rb b/spec/controllers/pages_controller_spec.rb
+new file mode 100644
+index 0000000..896c4fa
+--- /dev/null
++++ b/spec/controllers/pages_controller_spec.rb
+@@ -0,0 +1,51 @@
++require 'spec_helper'
++
++describe PagesController do
++  integrate_views
++  #Delete these examples and add some real ones
++  it "should use PagesController" do
++    controller.should be_an_instance_of(PagesController)
++  end
++
++
++  describe "GET 'home'" do
++    it "should be successful" do
++      get 'home'
++      response.should be_success
++    end
++    
++    it "should have the right title" do
++      get 'home'
++      response.should have_tag ("title", 
++                                "GetAPostDoc | Home")
++    end  
++  end
++
++  describe "GET 'contact'" do
++    it "should be successful" do
++      get 'contact'
++      response.should be_success
++    end
++
++    it "should have the right title" do
++      get 'contact'
++      response.should have_tag ("title", 
++                                "GetAPostDoc | Contact")
++    end  
++  end
++
++  describe "GET 'about'" do
++    it "should be successful" do
++      get 'about'
++      response.should be_success
++    end
++
++    it "should have the right title" do
++      get 'about'
++      response.should have_tag ("title", 
++                                "GetAPostDoc | About")
++    end  
++  end
++
++
++end
+diff --git a/spec/helpers/pages_helper_spec.rb b/spec/helpers/pages_helper_spec.rb
+new file mode 100644
+index 0000000..14863bf
+--- /dev/null
++++ b/spec/helpers/pages_helper_spec.rb
+@@ -0,0 +1,11 @@
++require 'spec_helper'
++
++describe PagesHelper do
++
++  #Delete this example and add some real ones or delete this file
++  it "should be included in the object returned by #helper" do
++    included_modules = (class << helper; self; end).send :included_modules
++    included_modules.should include(PagesHelper)
++  end
++
++end
+diff --git a/spec/rcov.opts b/spec/rcov.opts
+new file mode 100644
+index 0000000..274ed51
+--- /dev/null
++++ b/spec/rcov.opts
+@@ -0,0 +1,2 @@
++--exclude "spec/*,gems/*"
++--rails
+\ No newline at end of file
+diff --git a/spec/spec.opts b/spec/spec.opts
+new file mode 100644
+index 0000000..391705b
+--- /dev/null
++++ b/spec/spec.opts
+@@ -0,0 +1,4 @@
++--colour
++--format progress
++--loadby mtime
++--reverse
+diff --git a/spec/spec_helper.rb b/spec/spec_helper.rb
+new file mode 100644
+index 0000000..1f72de0
+--- /dev/null
++++ b/spec/spec_helper.rb
+@@ -0,0 +1,54 @@
++# This file is copied to ~/spec when you run 'ruby script/generate rspec'
++# from the project root directory.
++ENV["RAILS_ENV"] ||= 'test'
++require File.expand_path(File.join(File.dirname(__FILE__),'..','config','environment'))
++require 'spec/autorun'
++require 'spec/rails'
++
++# Uncomment the next line to use webrat's matchers
++#require 'webrat/integrations/rspec-rails'
++
++# Requires supporting files with custom matchers and macros, etc,
++# in ./support/ and its subdirectories.
++Dir[File.expand_path(File.join(File.dirname(__FILE__),'support','**','*.rb'))].each {|f| require f}
++
++Spec::Runner.configure do |config|
++  # If you're not using ActiveRecord you should remove these
++  # lines, delete config/database.yml and disable :active_record
++  # in your config/boot.rb
++  config.use_transactional_fixtures = true
++  config.use_instantiated_fixtures  = false
++  config.fixture_path = RAILS_ROOT + '/spec/fixtures/'
++
++  # == Fixtures
++  #
++  # You can declare fixtures for each example_group like this:
++  #   describe "...." do
++  #     fixtures :table_a, :table_b
++  #
++  # Alternatively, if you prefer to declare them only once, you can
++  # do so right here. Just uncomment the next line and replace the fixture
++  # names with your fixtures.
++  #
++  # config.global_fixtures = :table_a, :table_b
++  #
++  # If you declare global fixtures, be aware that they will be declared
++  # for all of your examples, even those that don't use them.
++  #
++  # You can also declare which fixtures to use (for example fixtures for test/fixtures):
++  #
++  # config.fixture_path = RAILS_ROOT + '/spec/fixtures/'
++  #
++  # == Mock Framework
++  #
++  # RSpec uses its own mocking framework by default. If you prefer to
++  # use mocha, flexmock or RR, uncomment the appropriate line:
++  #
++  # config.mock_with :mocha
++  # config.mock_with :flexmock
++  # config.mock_with :rr
++  #
++  # == Notes
++  #
++  # For more information take a look at Spec::Runner::Configuration and Spec::Runner
++end
+diff --git a/spec/views/pages/contact.html.erb_spec.rb b/spec/views/pages/contact.html.erb_spec.rb
+new file mode 100644
+index 0000000..e5c8c46
+--- /dev/null
++++ b/spec/views/pages/contact.html.erb_spec.rb
+@@ -0,0 +1,12 @@
++require 'spec_helper'
++
++describe "/pages/contact" do
++  before(:each) do
++    render 'pages/contact'
++  end
++
++  #Delete this example and add some real ones or delete this file
++  it "should tell you where to find the file" do
++    response.should have_tag('p', %r[Find me in app/views/pages/contact])
++  end
++end
+diff --git a/spec/views/pages/home.html.erb_spec.rb b/spec/views/pages/home.html.erb_spec.rb
+new file mode 100644
+index 0000000..5d7b62d
+--- /dev/null
++++ b/spec/views/pages/home.html.erb_spec.rb
+@@ -0,0 +1,12 @@
++require 'spec_helper'
++
++describe "/pages/home" do
++  before(:each) do
++    render 'pages/home'
++  end
++
++  #Delete this example and add some real ones or delete this file
++  it "should tell you where to find the file" do
++    response.should have_tag('p', %r[Find me in app/views/pages/home])
++  end
++end
+diff --git a/test/functional/hello_controller_test.rb b/test/functional/hello_controller_test.rb
+deleted file mode 100644
+index 6999351..0000000
+--- a/test/functional/hello_controller_test.rb
++++ /dev/null
+@@ -1,8 +0,0 @@
+-require 'test_helper'
+-
+-class HelloControllerTest < ActionController::TestCase
+-  # Replace this with your real tests.
+-  test "the truth" do
+-    assert true
+-  end
+-end
+diff --git a/test/functional/pages_controller_test.rb b/test/functional/pages_controller_test.rb
+deleted file mode 100644
+index 5ad8c34..0000000
+--- a/test/functional/pages_controller_test.rb
++++ /dev/null
+@@ -1,8 +0,0 @@
+-require 'test_helper'
+-
+-class PagesControllerTest < ActionController::TestCase
+-  # Replace this with your real tests.
+-  test "the truth" do
+-    assert true
+-  end
+-end
+diff --git a/test/performance/browsing_test.rb b/test/performance/browsing_test.rb
+deleted file mode 100644
+index 4b60558..0000000
+--- a/test/performance/browsing_test.rb
++++ /dev/null
+@@ -1,9 +0,0 @@
+-require 'test_helper'
+-require 'performance_test_help'
+-
+-# Profiling results for each test method are written to tmp/performance.
+-class BrowsingTest < ActionController::PerformanceTest
+-  def test_homepage
+-    get '/'
+-  end
+-end
+diff --git a/test/test_helper.rb b/test/test_helper.rb
+deleted file mode 100644
+index b9fe251..0000000
+--- a/test/test_helper.rb
++++ /dev/null
+@@ -1,38 +0,0 @@
+-ENV["RAILS_ENV"] = "test"
+-require File.expand_path(File.dirname(__FILE__) + "/../config/environment")
+-require 'test_help'
+-
+-class ActiveSupport::TestCase
+-  # Transactional fixtures accelerate your tests by wrapping each test method
+-  # in a transaction that's rolled back on completion.  This ensures that the
+-  # test database remains unchanged so your fixtures don't have to be reloaded
+-  # between every test method.  Fewer database queries means faster tests.
+-  #
+-  # Read Mike Clark's excellent walkthrough at
+-  #   http://clarkware.com/cgi/blosxom/2005/10/24#Rails10FastTesting
+-  #
+-  # Every Active Record database supports transactions except MyISAM tables
+-  # in MySQL.  Turn off transactional fixtures in this case; however, if you
+-  # don't care one way or the other, switching from MyISAM to InnoDB tables
+-  # is recommended.
+-  #
+-  # The only drawback to using transactional fixtures is when you actually 
+-  # need to test transactions.  Since your test is bracketed by a transaction,
+-  # any transactions started in your code will be automatically rolled back.
+-  self.use_transactional_fixtures = true
+-
+-  # Instantiated fixtures are slow, but give you @david where otherwise you
+-  # would need people(:david).  If you don't want to migrate your existing
+-  # test cases which use the @david style and don't mind the speed hit (each
+-  # instantiated fixtures translates to a database query per test method),
+-  # then set this back to true.
+-  self.use_instantiated_fixtures  = false
+-
+-  # Setup all fixtures in test/fixtures/*.(yml|csv) for all tests in alphabetical order.
+-  #
+-  # Note: You'll currently still have to declare fixtures explicitly in integration tests
+-  # -- they do not yet inherit this setting
+-  fixtures :all
+-
+-  # Add more helper methods to be used by all tests here...
+-end
+diff --git a/test/unit/helpers/hello_helper_test.rb b/test/unit/helpers/hello_helper_test.rb
+deleted file mode 100644
+index df82ec0..0000000
+--- a/test/unit/helpers/hello_helper_test.rb
++++ /dev/null
+@@ -1,4 +0,0 @@
+-require 'test_helper'
+-
+-class HelloHelperTest < ActionView::TestCase
+-end
+diff --git a/test/unit/helpers/pages_helper_test.rb b/test/unit/helpers/pages_helper_test.rb
+deleted file mode 100644
+index 535dfe1..0000000
+--- a/test/unit/helpers/pages_helper_test.rb
++++ /dev/null
+@@ -1,4 +0,0 @@
+-require 'test_helper'
+-
+-class PagesHelperTest < ActionView::TestCase
+-end
