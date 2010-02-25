@@ -2,9 +2,16 @@
   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html lang="en" xml:lang="en" xmlns="http://www.w3.org/1999/xhtml">
   <head>
-    <title>GetAPostDoc | <%= @title %></title>
+    <title><%= title %></title>
+    <%= render :partial => 'shared/stylesheets' %>
   </head>
   <body>
-    <%= yield %>
+    <div class="container">
+      <%= render :partial => 'shared/header' %>
+      <div id="content">
+        <%= yield %>
+      </div>
+      <%= render :partial => 'shared/footer' %>
+    </div>
   </body>
 </html>

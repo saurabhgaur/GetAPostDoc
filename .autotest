@@ -5,3 +5,10 @@ Autotest.add_hook :initialize do |autotest|
     autotest.add_exception(exception)
   end
 end
+
+Autotest.add_hook :initialize do |autotest|
+  autotest.add_mapping(/^spec\/integration\/.*_spec\.rb$/) do
+    autotest.files_matching(/^spec\/integration\/.*_spec\.rb$/)
+  end  
+end
+

@@ -16,7 +16,7 @@ describe PagesController do
     
     it "should have the right title" do
       get 'home'
-      response.should have_tag ("title", 
+      response.should have_tag("title", 
                                 "GetAPostDoc | Home")
     end  
   end
@@ -29,7 +29,7 @@ describe PagesController do
 
     it "should have the right title" do
       get 'contact'
-      response.should have_tag ("title", 
+      response.should have_tag("title", 
                                 "GetAPostDoc | Contact")
     end  
   end
@@ -42,7 +42,7 @@ describe PagesController do
 
     it "should have the right title" do
       get 'about'
-      response.should have_tag ("title", 
+      response.should have_tag("title", 
                                 "GetAPostDoc | About")
     end  
   end
